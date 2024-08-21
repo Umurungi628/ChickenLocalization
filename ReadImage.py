@@ -5,8 +5,8 @@ import cv2
 from pycocotools.coco import COCO
 
 # Load the combined annotations file
-annotation_file = '/Users/Admin/PycharmProjects/ChickenDetection/output/annotations.json'
-image_folder = '/Users/Admin/PycharmProjects/ChickenDetection/output'
+annotation_file = '/Users/Admin/PycharmProjects/ChickenLocalization/outputtt/annotations.json'
+image_folder = '/Users/Admin/PycharmProjects/ChickenLocalization/outputtt'
 
 # Initialize COCO API
 coco = COCO(annotation_file)

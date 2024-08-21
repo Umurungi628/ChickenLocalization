@@ -22,20 +22,35 @@ def choose_random_bounding_boxes(annotations, count):
         count = len(bounding_boxes)
     return random.sample(bounding_boxes, count)
 
+def choose_random_contours(annotations, count):
+    contours = [annotation["segmentation"] for annotation in annotations if "segmentation" in annotation]
+    if count > len(contours):
+        count = len(contours)
+    return random.sample(contours, count)
+
+
 # Function to place bounding boxes on empty stalls
-def place_bounding_boxes_on_stalls(empty_stalls, crops, bounding_boxes, repeat_range, label, starting_id):
+def place_bounding_boxes_on_stalls(empty_stalls, crops, bounding_boxes, contours, repeat_range, label, starting_id):
     annotations = []
     ann_id = starting_id
     for stall_idx, stall in enumerate(empty_stalls):
         for _ in range(random.randint(*repeat_range)):
             crop = random.choice(crops)
             bbox = random.choice(bounding_boxes)
+            contour = random.choice(contours)
+
             if isinstance(bbox, list) and len(bbox) == 4:
                 x, y, w, h = map(int, bbox)
                 if crop.shape[0] <= stall.shape[0] and crop.shape[1] <= stall.shape[1]:
                     position = (random.randint(0, stall.shape[1] - crop.shape[1]),
                                 random.randint(0, stall.shape[0] - crop.shape[0]))
-                    stall[position[1]:position[1] + crop.shape[0], position[0]:position[0] + crop.shape[1]] = crop
+                    for i in range(w):
+                        for j in range(h):
+                            if cv2.pointPolygonTest(contour, [j,i], True):
+                                stall[position[1]+j, position[0]+i] = crop[j, i]
+                    #stall[position[1]:position[1] + crop.shape[0], position[0]:position[0] + crop.shape[1]] = crop
+
+
                     annotations.append({
                         "id": ann_id,
                         "image_id": stall_idx,
@@ -50,11 +65,15 @@ def place_bounding_boxes_on_stalls(empty_stalls, crops, bounding_boxes, repeat_r
 # Function to transform dead chicken bounding boxes
 def transform_dead_chicken_bounding_boxes(dead_chicken_images, annotations, repeat_range):
     transformed_bounding_boxes = []
+    transformed_contours = []
     transformed_crops = []
 
     for image, annotation in zip(dead_chicken_images, annotations):
         for _ in range(random.randint(*repeat_range)):
             bbox = annotation['bbox']
+            contours = annotation['segmentation']
+            xc = np.array(contours, dtype=float).flatten()[::2]
+            yc = np.array(contours, dtype=float).flatten()[1::2]
             if isinstance(bbox, list) and len(bbox) == 4:
                 x, y, w, h = map(int, bbox)
 
@@ -66,10 +85,16 @@ def transform_dead_chicken_bounding_boxes(dead_chicken_images, annotations, repe
 
                 if new_y + new_h <= image.shape[0] and new_x + new_w <= image.shape[1]:
                     crop = image[new_y:new_y + new_h, new_x:new_x + new_w]
-                    crop = cv2.resize(crop, (random.randint(50, 120), random.randint(50, 120)))
+                    crop = cv2.resize(crop, (random.randint(100, 180), random.randint(100, 180)))
+
                     angle = random.randint(0, 360)
                     M = cv2.getRotationMatrix2D((crop.shape[1] // 2, crop.shape[0] // 2), angle, 1)
                     crop_rotated = cv2.warpAffine(crop, M, (crop.shape[1], crop.shape[0]))
+                    angler = np.radians(angle)
+                    xcr = (xc-w//2)*np.cos(angler) + (y-h//2)*np.sin(angler) + w//2
+                    ycr = (xc-w//2)*np.sin(angler) + (y-h//2)*np.cos(angler) + w//2
+
+
                     perspective_matrix = cv2.getPerspectiveTransform(
                         np.float32([[0, 0], [crop.shape[1], 0], [0, crop.shape[0]], [crop.shape[1], crop.shape[0]]]),
                         np.float32([[random.uniform(0, 10), random.uniform(0, 10)],
@@ -79,22 +104,30 @@ def transform_dead_chicken_bounding_boxes(dead_chicken_images, annotations, repe
                     )
                     crop_transformed = cv2.warpPerspective(crop_rotated, perspective_matrix,
                                                            (crop.shape[1], crop.shape[0]))
+                    coords = np.array([xcr,ycr]).transpose().reshape(1, len(xcr), 2)
+                    coords_t = cv2.perspectiveTransform(coords, perspective_matrix)
+                    coords_t = coords_t.transpose().reshape(2, len(xcr))
+                    xct = coords_t[0,:]
+                    yct = coords_t[1,:]
+
+                    transformed_contours.append(np.array([xct, yct], dtype=int).transpose().reshape(1, 2 * len(xct)).tolist())
                     transformed_crops.append(crop_transformed)
                     transformed_bounding_boxes.append([new_x, new_y, new_w, new_h])
-    return transformed_crops, transformed_bounding_boxes
+    return transformed_crops, transformed_bounding_boxes, transformed_contours
 
 # Function to combine healthy and dead chickens with empty stalls
-def combine_images_with_stalls(empty_stalls, healthy_bboxes, dead_bboxes, healthy_repeat_range, dead_repeat_range):
+def combine_images_with_stalls(empty_stalls, healthy_anot, dead_anot, healthy_repeat_range, dead_repeat_range):
     healthy_crops = [healthy_images[i] for i in range(len(healthy_images))]
-    healthy_contours = choose_random_bounding_boxes(healthy_bboxes, random.randint(*healthy_repeat_range))
+    healthy_bboxes = choose_random_bounding_boxes(healthy_anot, random.randint(*healthy_repeat_range))
+    healthy_contours = choose_random_contours(healthy_anot, random.randint(*healthy_repeat_range))
 
-    dead_crops, dead_contours = transform_dead_chicken_bounding_boxes(dead_images, dead_bboxes, dead_repeat_range)
+    dead_crops, dead_bboxes, dead_contours = transform_dead_chicken_bounding_boxes(dead_images, dead_anot, dead_repeat_range)
 
     ann_id = 0
-    final_images, healthy_annotations, ann_id = place_bounding_boxes_on_stalls(empty_stalls, healthy_crops,
+    final_images, healthy_annotations, ann_id = place_bounding_boxes_on_stalls(empty_stalls, healthy_crops, healthy_bboxes,
                                                                                healthy_contours, healthy_repeat_range,
                                                                                label=1, starting_id=ann_id)
-    final_images, dead_annotations, ann_id = place_bounding_boxes_on_stalls(final_images, dead_crops, dead_contours,
+    final_images, dead_annotations, ann_id = place_bounding_boxes_on_stalls(final_images, dead_crops, dead_contours, dead_contours,
                                                                             dead_repeat_range, label=2,
                                                                             starting_id=ann_id)
 
@@ -103,11 +136,11 @@ def combine_images_with_stalls(empty_stalls, healthy_bboxes, dead_bboxes, health
 
 # Main script
 if __name__ == "__main__":
-    healthy_image_dir = '/Users/Admin/PycharmProjects/ChickenDetection/healthy_images'
-    dead_image_dir = '/Users/Admin/PycharmProjects/ChickenDetection/dead_images'
-    empty_stall_dir = '/Users/Admin/PycharmProjects/ChickenDetection/empty_stalls'
-    healthy_annotations_file = '/Users/Admin/PycharmProjects/ChickenDetection/healthy_annotations/annotations/annotations.json'
-    dead_annotations_file = '/Users/Admin/PycharmProjects/ChickenDetection/dead_annotations/annotations/annotations.json'
+    healthy_image_dir = '/Users/Admin/PycharmProjects/ChickenLocalization/healthy_images'
+    dead_image_dir = '/Users/Admin/PycharmProjects/ChickenLocalization/dead_images'
+    empty_stall_dir = '/Users/Admin/PycharmProjects/ChickenLocalization/empty_stalls'
+    healthy_annotations_file = '/Users/Admin/PycharmProjects/ChickenLocalization/healthy_annotations/annotations/annotations.json'
+    dead_annotations_file = '/Users/Admin/PycharmProjects/ChickenLocalization/dead_annotations/annotations/annotations.json'
 
     healthy_images = load_images(healthy_image_dir)
     dead_images = load_images(dead_image_dir)
