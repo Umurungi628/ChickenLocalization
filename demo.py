@@ -1,0 +1,5 @@
+empty_stalls_dir =r'C:\Users\Admin\PycharmProjects\chickenLocalization\empty_stalls'
+healthy_dir = r'C:\Users\Admin\PycharmProjects\chickenLocalization\healthy_images'
+dead_dir = r'C:\Users\Admin\PycharmProjects\chickenLocalization\dead_images'
+healthy_json = r'C:\Users\Admin\PycharmProjects\chickenLocalization\healthy_annotations\annotations\annotations.json'
+dead_json = r'C:\Users\Admin\PycharmProjects\chickenLocalization\dead_annotations\annotations\annotations.json'
