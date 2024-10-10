@@ -1,11 +1,7 @@
 from ultralytics import YOLO
 
-# Load the pre-trained YOLOv8-nano model
-model = YOLO("yolov8n.pt")
+# Load a YOLOv8 model (yolov8n.pt is a small model, consider using yolov8m.pt or yolov8l.pt for larger models)
+model = YOLO('yolov8m.pt')
 
-# Perform inference on an image (URL or local path)
-results = model(r"C:\Users\Admin\PycharmProjects\ChickenLocalization\zidane.jpg")
-
-# Since 'results' is a list, we need to call 'show()' on each result
-for result in results:
-    result.show()  # Display each result
+# Train the model
+model.train(data='/Users/User/PycharmProjects/ChickenLocalization/ChickenLocalization-main/data.yaml', epochs=100, imgsz=640, batch=16)
